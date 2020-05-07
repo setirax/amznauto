@@ -1,0 +1,122 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Retain
+    Properties:
+      AutoMinorVersionUpgrade: true
+      BackupRetentionPeriod: 0
+      CopyTagsToSnapshot: true
+      DBInstanceClass: db.t2.micro
+      DBInstanceIdentifier: skawordpress
+      DBName: skawordpress
+      DBSubnetGroupName: default-vpc-44de5b20
+      AllocatedStorage: '1000'
+      DeleteAutomatedBackups: true
+      DeletionProtection: false
+      Engine: MySQL
+      EngineVersion: 5.7.26
+      MasterUsername: skawordpress
+      MasterUserPassword: '{{resolve:ssm:WordpressDBAuth}}'
+      MultiAZ: true
+      PubliclyAccessible: false
+      Iops: 1000
+      StorageType: io1
+      VPCSecurityGroups:
+      - sg-0e6d91eb9d50831b4
+  InstancesEc2:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      AvailabilityZone: eu-west-1b
+      ImageId: ami-035966e8adab4aaad
+      KeyName: ska
+      IamInstanceProfile: S3ForWP
+      SecurityGroupIds:
+      - sg-0c0cc7c2f1d0400d5
+      Tags:
+      - Key: Name
+        Value: CFWP
+      UserData:
+        Fn::Base64:
+          Fn::Sub: '#!/bin/bash
+
+            sudo wget https://sebastiancloudguru.s3-eu-west-1.amazonaws.com/skaWP.sh
+
+            sudo chmod +x skaWP.sh
+
+            sudo sed -i -e ''s/\r$//'' ./skaWP.sh
+
+            sudo ./skaWP.sh
+
+            '
+  Instances2:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      AvailabilityZone: eu-west-1a
+      ImageId: ami-035966e8adab4aaad
+      KeyName: ska
+      IamInstanceProfile: S3ForWP
+      SecurityGroupIds:
+      - sg-0c0cc7c2f1d0400d5
+      Tags:
+      - Key: Name
+        Value: CFWP2
+      UserData:
+        Fn::Base64:
+          Fn::Sub: '#!/bin/bash
+
+            sudo wget https://sebastiancloudguru.s3-eu-west-1.amazonaws.com/skaWP.sh
+
+            sudo chmod +x skaWP.sh
+
+            sudo sed -i -e ''s/\r$//'' ./skaWP.sh
+
+            sudo ./skaWP.sh
+
+            '
+  LoadBalancerTopic:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Name: skaWPLoadBalancer
+      Scheme: internet-facing
+      SecurityGroups:
+      - sg-0c0cc7c2f1d0400d5
+      Subnets:
+      - subnet-c2cdaaa6
+      - subnet-0479d85c
+      Type: application
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - TargetGroupArn:
+          Ref: LoadBalancerTarget
+        Type: forward
+      LoadBalancerArn:
+        Ref: LoadBalancerTopic
+      Port: 80
+      Protocol: HTTP
+  LoadBalancerTarget:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /healthy.html
+      HealthCheckPort: '80'
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Name: WPTargetGroup
+      Port: 80
+      Protocol: HTTP
+      Targets:
+      - Id:
+          Ref: InstancesEc2
+      - Id:
+          Ref: Instances2
+      TargetType: instance
+      UnhealthyThresholdCount: 3
+      VpcId: vpc-44de5b20
